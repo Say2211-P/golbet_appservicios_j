@@ -1,8 +1,10 @@
 ﻿// Implementations/MatchService.cs
+using GolBet.Entities;
 using AutoMapper;
 using GolBet.Entities.Enums;
 using GolBet.Repositories.Interfaces;
 using GolBet.Services.DTOs;
+using GolBet.Services.Helpers;
 using GolBet.Services.Interfaces;
 
 namespace GolBet.Services.Implementations;
@@ -30,4 +32,49 @@ public class MatchService : IMatchService
         return match is null ? null : _mapper.Map<MatchDetailDto>(match);
     }
 
+    public async Task<MatchFormDto?> GetForEditAsync(int id)
+    {
+        var match = await _matchRepository.GetByIdAsync(id);
+        if (match is null) return null;
+
+        var dto = _mapper.Map<MatchFormDto>(match);
+        dto.Date = dto.Date.ToColombiaTime();   // UTC (DB) -> hora Colombia (formulario)
+        return dto;
+    }
+
+    public async Task CreateAsync(MatchFormDto dto)
+    {
+        ValidateBusinessRules(dto);
+
+        var match = _mapper.Map<Match>(dto);
+        match.Date = dto.Date.ToUtcFromColombia();   // hora Colombia -> UTC (DB)
+        await _matchRepository.AddAsync(match);
+    }
+
+    public async Task UpdateAsync(MatchFormDto dto)
+    {
+        ValidateBusinessRules(dto);
+
+        var match = await _matchRepository.GetByIdAsync(dto.Id)
+            ?? throw new KeyNotFoundException($"Match {dto.Id} not found.");
+
+        _mapper.Map(dto, match);
+        match.Date = dto.Date.ToUtcFromColombia();
+        await _matchRepository.UpdateAsync(match);
+    }
+
+    public async Task DeactivateAsync(int id)
+        => await _matchRepository.DeactivateAsync(id);
+
+    // ---- Reglas de negocio ----
+    private static void ValidateBusinessRules(MatchFormDto dto)
+    {
+        if (dto.HomeTeamId == dto.AwayTeamId)
+            throw new InvalidOperationException(
+                "El equipo local y el visitante no pueden ser el mismo.");
+
+        if (dto.Date.ToUtcFromColombia() <= DateTime.UtcNow)
+            throw new InvalidOperationException(
+                "La fecha del partido debe ser futura.");
+    }
 }

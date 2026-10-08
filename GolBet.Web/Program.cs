@@ -1,3 +1,4 @@
+using System.Globalization;
 using GolBet.Repositories.Data;
 using GolBet.Repositories.Implementations;
 using GolBet.Repositories.Interfaces;
@@ -6,20 +7,16 @@ using GolBet.Services.Interfaces;
 using GolBet.Services.Mapping;
 using Microsoft.EntityFrameworkCore;
 
-
+// Cultura es-CO para toda la aplicación (fechas, monedas, etc.)
+var culture = new CultureInfo("es-CO");
+CultureInfo.DefaultThreadCurrentCulture = culture;
+CultureInfo.DefaultThreadCurrentUICulture = culture;
 
 var builder = WebApplication.CreateBuilder(args);
 
-
-
 builder.Services.AddControllersWithViews();
 
-
-
-//Este es el nuevo código  
-
 builder.Services.AddDbContext<AppDbContext>(options =>
-
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
@@ -27,9 +24,9 @@ builder.Services.AddScoped<IMatchRepository, MatchRepository>();
 
 builder.Services.AddAutoMapper(typeof(MappingProfile));
 builder.Services.AddScoped<IMatchService, MatchService>();
+builder.Services.AddScoped<ITeamService, TeamService>();   // nuevo (Módulo 6)
 
 var app = builder.Build();
-
 
 using (var scope = app.Services.CreateScope())
 {
@@ -41,7 +38,6 @@ using (var scope = app.Services.CreateScope())
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
