@@ -1,14 +1,28 @@
 ﻿using GolBet.Entities;
 using GolBet.Entities.Enums;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace GolBet.Repositories.Data;
 
 public static class DbSeeder
 {
-    public static async Task SeedAsync(AppDbContext context)
+    public const string AdminRole = "Admin";
+    public const string BettorRole = "Apostador";
+
+    public static async Task SeedAsync(
+        AppDbContext context,
+        RoleManager<IdentityRole> roleManager,
+        UserManager<AppUser> userManager)
     {
         await context.Database.MigrateAsync();
+        await SeedDomainAsync(context);
+        await SeedIdentityAsync(roleManager, userManager);
+    }
+
+    // ---- Domain data: teams and matches (Module 3) ----
+    private static async Task SeedDomainAsync(AppDbContext context)
+    {
         if (await context.Teams.AnyAsync()) return; // idempotencia
 
         var teams = new List<Team>
@@ -23,7 +37,7 @@ public static class DbSeeder
             new() { Name = "Once Caldas", City = "Manizales", CrestUrl = "https://placehold.co/80x80/ffffff/000000?text=ONC" }
         };
         context.Teams.AddRange(teams);
-        await context.SaveChangesAsync(); // aquí se generan los Id
+        await context.SaveChangesAsync();
 
         var today = DateTime.UtcNow.Date;
         var matches = new List<Match>
@@ -44,5 +58,31 @@ public static class DbSeeder
         };
         context.Matches.AddRange(matches);
         await context.SaveChangesAsync();
+    }
+
+    // ---- Identity data: roles and admin user (Module 7) ----
+    private static async Task SeedIdentityAsync(
+        RoleManager<IdentityRole> roleManager,
+        UserManager<AppUser> userManager)
+    {
+        foreach (var role in new[] { AdminRole, BettorRole })
+        {
+            if (!await roleManager.RoleExistsAsync(role))
+                await roleManager.CreateAsync(new IdentityRole(role));
+        }
+
+        if (await userManager.FindByEmailAsync("admin@golbet.com") is null)
+        {
+            var admin = new AppUser
+            {
+                UserName = "admin@golbet.com",
+                Email = "admin@golbet.com",
+                FullName = "Administrador GolBet",
+                Balance = 0m,
+                EmailConfirmed = true
+            };
+            await userManager.CreateAsync(admin, "Admin123*");
+            await userManager.AddToRoleAsync(admin, AdminRole);
+        }
     }
 }
