@@ -19,8 +19,7 @@ public class MatchesController : Controller
         _teamService = teamService;
     }
 
-    // GET /Matches -> all matches (public)
-    // GET /Matches?status=Scheduled&search=nacional -> filtered + searched board
+    // GET /Matches?status=Scheduled&search=nacional (public)
     public async Task<IActionResult> Index(MatchStatus? status, string? search)
     {
         ViewBag.CurrentStatus = status;
@@ -28,15 +27,15 @@ public class MatchesController : Controller
         var board = await _matchService.GetBoardAsync(status, search);
         return View(board);
     }
+
     // GET /Matches/Detail/3 (public)
     public async Task<IActionResult> Detail(int id)
     {
         var match = await _matchService.GetDetailAsync(id);
-        if (match is null) return NotFound(); // HTTP 404
+        if (match is null) return NotFound();
         return View(match);
     }
 
-    // GET /Matches/Create
     [Authorize(Roles = DbSeeder.AdminRole)]
     public async Task<IActionResult> Create()
     {
@@ -44,7 +43,6 @@ public class MatchesController : Controller
         return View(new MatchFormDto());
     }
 
-    // POST /Matches/Create
     [Authorize(Roles = DbSeeder.AdminRole)]
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(MatchFormDto dto)
@@ -61,7 +59,7 @@ public class MatchesController : Controller
             TempData["Success"] = "Partido creado correctamente.";
             return RedirectToAction(nameof(Index));
         }
-        catch (InvalidOperationException ex)   // regla de negocio violada
+        catch (InvalidOperationException ex)
         {
             ModelState.AddModelError(string.Empty, ex.Message);
             await LoadTeamsAsync();
@@ -69,7 +67,6 @@ public class MatchesController : Controller
         }
     }
 
-    // GET /Matches/Edit/5
     [Authorize(Roles = DbSeeder.AdminRole)]
     public async Task<IActionResult> Edit(int id)
     {
@@ -79,7 +76,6 @@ public class MatchesController : Controller
         return View(dto);
     }
 
-    // POST /Matches/Edit
     [Authorize(Roles = DbSeeder.AdminRole)]
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Edit(MatchFormDto dto)
@@ -104,7 +100,6 @@ public class MatchesController : Controller
         }
     }
 
-    // POST /Matches/Deactivate/5
     [Authorize(Roles = DbSeeder.AdminRole)]
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Deactivate(int id)
@@ -112,6 +107,64 @@ public class MatchesController : Controller
         await _matchService.DeactivateAsync(id);
         TempData["Success"] = "Partido desactivado.";
         return RedirectToAction(nameof(Index));
+    }
+
+    // ---- Module 9 ----
+
+    // POST /Matches/Start/5
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = DbSeeder.AdminRole)]
+    public async Task<IActionResult> Start(int id)
+    {
+        try
+        {
+            await _matchService.StartMatchAsync(id);
+            TempData["Success"] = "¡Partido en juego! Las apuestas quedaron cerradas.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+
+        return RedirectToAction(nameof(Detail), new { id });
+    }
+
+    // GET /Matches/Close/5 -> the score form
+    [Authorize(Roles = DbSeeder.AdminRole)]
+    public async Task<IActionResult> Close(int id)
+    {
+        var match = await _matchService.GetDetailAsync(id);
+        if (match is null) return NotFound();
+
+        ViewBag.Match = match;
+        return View(new MatchResultFormDto { MatchId = id });
+    }
+
+    // POST /Matches/Close -> close and resolve
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = DbSeeder.AdminRole)]
+    public async Task<IActionResult> Close(MatchResultFormDto dto)
+    {
+        if (!ModelState.IsValid)
+        {
+            ViewBag.Match = await _matchService.GetDetailAsync(dto.MatchId);
+            return View(dto);
+        }
+
+        try
+        {
+            var summary = await _matchService.CloseMatchAsync(dto);
+            TempData["Success"] =
+                $"Partido cerrado {dto.HomeGoals}-{dto.AwayGoals}. " +
+                $"{summary.ResolvedBets} apuestas resueltas: {summary.WonBets} ganadas, " +
+                $"{summary.TotalPaid:N0} FutCoins pagados.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+
+        return RedirectToAction(nameof(Detail), new { id = dto.MatchId });
     }
 
     private async Task LoadTeamsAsync()
