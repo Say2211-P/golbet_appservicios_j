@@ -41,6 +41,8 @@ builder.Services.ConfigureApplicationCookie(options =>
 
 builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 builder.Services.AddScoped<IMatchRepository, MatchRepository>();
+builder.Services.AddScoped<IBetRepository, BetRepository>();   // Módulo 8
+builder.Services.AddScoped<IBetService, BetService>();   // Módulo 8
 
 builder.Services.AddAutoMapper(typeof(MappingProfile));
 builder.Services.AddScoped<IMatchService, MatchService>();
