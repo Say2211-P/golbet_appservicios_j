@@ -1,7 +1,5 @@
-﻿// Interfaces/IMatchService.cs
-using GolBet.Entities.Enums;
+﻿using GolBet.Entities.Enums;
 using GolBet.Services.DTOs;
-
 
 namespace GolBet.Services.Interfaces;
 
@@ -13,4 +11,6 @@ public interface IMatchService
     Task CreateAsync(MatchFormDto dto);
     Task UpdateAsync(MatchFormDto dto);
     Task DeactivateAsync(int id);
+    Task StartMatchAsync(int id);
+    Task<ResolutionSummaryDto> CloseMatchAsync(MatchResultFormDto dto);
 }
