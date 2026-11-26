@@ -5,6 +5,7 @@ using GolBet.Repositories.Interfaces;
 using GolBet.Services.DTOs;
 using GolBet.Services.Helpers;
 using GolBet.Services.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace GolBet.Services.Implementations;
 
@@ -13,15 +14,18 @@ public class MatchService : IMatchService
     private readonly IMatchRepository _matchRepository;
     private readonly IBetRepository _betRepository;
     private readonly IMapper _mapper;
+    private readonly ILogger<MatchService> _logger;
 
     public MatchService(
         IMatchRepository matchRepository,
         IBetRepository betRepository,
-        IMapper mapper)
+        IMapper mapper,
+        ILogger<MatchService> logger)
     {
         _matchRepository = matchRepository;
         _betRepository = betRepository;
         _mapper = mapper;
+        _logger = logger;
     }
 
     public async Task<IEnumerable<MatchDto>> GetBoardAsync(MatchStatus? status = null, string? search = null)
@@ -89,7 +93,6 @@ public class MatchService : IMatchService
         var match = await _matchRepository.GetByIdAsync(dto.MatchId)
             ?? throw new KeyNotFoundException($"Match {dto.MatchId} not found.");
 
-        // State machine guards (first idempotence belt)
         if (match.Status == MatchStatus.Finished)
             throw new InvalidOperationException(
                 "Este partido ya fue cerrado y sus apuestas resueltas.");
@@ -98,15 +101,12 @@ public class MatchService : IMatchService
             throw new InvalidOperationException(
                 "El partido debe estar «En juego» para cerrarse. Inícialo primero.");
 
-        // 1. Record the final score and the new state
         match.HomeGoals = dto.HomeGoals;
         match.AwayGoals = dto.AwayGoals;
         match.Status = MatchStatus.Finished;
 
-        // 2. Compute the winning pick from the score
         var winningPick = GetWinningPick(dto.HomeGoals, dto.AwayGoals);
 
-        // 3. Resolve every PENDING bet (second idempotence belt)
         var pendingBets = await _betRepository.GetPendingByMatchAsync(match.Id);
         var summary = new ResolutionSummaryDto { ResolvedBets = pendingBets.Count };
 
@@ -122,12 +122,18 @@ public class MatchService : IMatchService
             }
             else
             {
-                bet.Status = BetStatus.Lost;   // stake was deducted at placement
+                bet.Status = BetStatus.Lost;
             }
         }
 
-        // 4. ONE save: the match, every bet and every balance
-        await _matchRepository.UpdateAsync(match);
+        await _matchRepository.UpdateAsync(match);   // ONE save for everything
+
+        // Audit log: AFTER the successful save, template + arguments (NO $)
+        _logger.LogInformation(
+            "Match {MatchId} closed {HomeGoals}-{AwayGoals}: " +
+            "{ResolvedBets} bets resolved, {WonBets} won, {TotalPaid} paid",
+            match.Id, dto.HomeGoals, dto.AwayGoals,
+            summary.ResolvedBets, summary.WonBets, summary.TotalPaid);
 
         return summary;
     }
